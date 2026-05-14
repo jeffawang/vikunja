@@ -248,27 +248,35 @@ func setupSentry(e *echo.Echo) {
 
 // RegisterRoutes registers all routes for the application
 func RegisterRoutes(e *echo.Echo) {
+	basePath := strings.TrimSuffix(config.ServiceBasePath.GetString(), "/")
+	apiPrefix := basePath + "/api/v1"
+
+	initUnauthenticatedAPIPaths(basePath)
+	models.SetAPIRoutesPrefix(apiPrefix)
+
+	root := e.Group(basePath)
 
 	if config.ServiceEnableCaldav.GetBool() {
 		// Caldav routes
-		wkg := e.Group("/.well-known")
+		wkg := root.Group("/.well-known")
 		wkg.Use(middleware.BasicAuth(caldav.BasicAuth))
 		wkg.Any("/caldav", caldav.PrincipalHandler)
 		wkg.Any("/caldav/", caldav.PrincipalHandler)
-		c := e.Group("/dav")
+		c := root.Group("/dav")
 		registerCalDavRoutes(c)
 	}
 
 	// healthcheck
-	e.GET("/health", HealthcheckHandler)
+	root.GET("/health", HealthcheckHandler)
 
-	setupStaticFrontendFilesHandler(e)
+	setupStaticFrontendFilesHandler(e, basePath)
 
 	// CORS
 	if config.CorsEnable.GetBool() {
 		allowedOrigins := config.CorsOrigins.GetStringSlice()
 		log.Infof("CORS enabled with origins: %s", strings.Join(allowedOrigins, ", "))
 
+		davPath := basePath + "/dav"
 		// Echo v5 CORS middleware is stricter and doesn't accept wildcards in ports like "http://127.0.0.1:*"
 		// We use UnsafeAllowOriginFunc to handle these patterns for backwards compatibility
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -283,47 +291,53 @@ func RegisterRoutes(e *echo.Echo) {
 				// we just disable it when for caldav requests.
 				// Caldav requires OPTIONS requests to be answered in a specific manner,
 				// not doing this would break the caldav implementation
-				return strings.HasPrefix(context.Path(), "/dav")
+				return strings.HasPrefix(context.Path(), davPath)
 			},
 		}))
 	}
 
 	// API Routes
-	a := e.Group("/api/v1")
+	a := root.Group("/api/v1")
 	registerAPIRoutes(a)
 
 	// Collect routes for API token permissions
 	// In Echo v5, we collect routes after registration using e.Router().Routes()
-	collectRoutesForAPITokens(e)
+	collectRoutesForAPITokens(e, apiPrefix)
 }
 
-// unauthenticatedAPIPaths contains paths that don't require JWT authentication
-var unauthenticatedAPIPaths = map[string]bool{
-	"/api/v1/register":                       true,
-	"/api/v1/user/password/token":            true,
-	"/api/v1/user/password/reset":            true,
-	"/api/v1/user/confirm":                   true,
-	"/api/v1/login":                          true,
-	"/api/v1/user/token/refresh":             true,
-	"/api/v1/auth/openid/:provider/callback": true,
-	"/api/v1/test/:table":                    true,
-	"/api/v1/info":                           true,
-	"/api/v1/shares/:share/auth":             true,
-	"/api/v1/docs.json":                      true,
-	"/api/v1/docs":                           true,
-	"/api/v1/docs/redoc.standalone.js":       true,
-	"/api/v1/metrics":                        true,
-	"/api/v1/oauth/token":                    true,
+// unauthenticatedAPIPaths contains paths that don't require JWT authentication.
+// Initialized at startup with the configured base path prefix.
+var unauthenticatedAPIPaths map[string]bool
+
+func initUnauthenticatedAPIPaths(basePath string) {
+	prefix := basePath + "/api/v1"
+	unauthenticatedAPIPaths = map[string]bool{
+		prefix + "/register":                       true,
+		prefix + "/user/password/token":            true,
+		prefix + "/user/password/reset":            true,
+		prefix + "/user/confirm":                   true,
+		prefix + "/login":                          true,
+		prefix + "/user/token/refresh":             true,
+		prefix + "/auth/openid/:provider/callback": true,
+		prefix + "/test/:table":                    true,
+		prefix + "/info":                           true,
+		prefix + "/shares/:share/auth":             true,
+		prefix + "/docs.json":                      true,
+		prefix + "/docs":                           true,
+		prefix + "/docs/redoc.standalone.js":       true,
+		prefix + "/metrics":                        true,
+		prefix + "/oauth/token":                    true,
+	}
 }
 
 // collectRoutesForAPITokens collects all routes for API token permission checking.
 // In Echo v5, OnAddRouteHandler was removed, so we collect routes after registration.
-func collectRoutesForAPITokens(e *echo.Echo) {
+func collectRoutesForAPITokens(e *echo.Echo, apiPrefix string) {
 	routeList := e.Router().Routes()
 	log.Debugf("Collecting %d routes for API token usage", len(routeList))
 	for _, route := range routeList {
 		// Only process API routes
-		if !strings.HasPrefix(route.Path, "/api/v1") {
+		if !strings.HasPrefix(route.Path, apiPrefix) {
 			continue
 		}
 

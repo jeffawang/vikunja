@@ -162,6 +162,11 @@
                     "key": "trustedproxies",
                     "default_value": "",
                     "comment": "Comma-separated list of CIDR ranges for trusted reverse proxies. Only used when service.ipextractionmethod is 'xff' or 'realip'. X-Forwarded-For / X-Real-IP headers are only trusted from these addresses. Example: '127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12'"
+                },
+                {
+                    "key": "basepath",
+                    "default_value": "",
+                    "comment": "Optional URL prefix under which Vikunja is served. When set, all routes (API and frontend) are mounted under this path. Example: '/_tasks/' serves everything at https://example.com/_tasks/. The frontend must also be built with the matching VIKUNJA_FRONTEND_BASE environment variable."
                 }
             ]
         },

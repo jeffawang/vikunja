@@ -26,6 +26,13 @@ import (
 )
 
 var apiTokenRoutes = map[string]APITokenRoute{}
+var apiRoutesPrefix = "/api/v1"
+
+// SetAPIRoutesPrefix configures the prefix under which API routes are mounted.
+// Must be called before CollectRoutesForAPITokenUsage to handle custom base paths.
+func SetAPIRoutesPrefix(prefix string) {
+	apiRoutesPrefix = prefix
+}
 
 func init() {
 	apiTokenRoutes = make(map[string]APITokenRoute)
@@ -45,7 +52,7 @@ type RouteDetail struct {
 }
 
 func getRouteGroupName(path string) (finalName string, filteredParts []string) {
-	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/"), "/")
+	parts := strings.Split(strings.TrimPrefix(path, apiRoutesPrefix+"/"), "/")
 	filteredParts = []string{}
 	for _, part := range parts {
 		if strings.HasPrefix(part, ":") {
@@ -336,7 +343,7 @@ func CanDoAPIRoute(c *echo.Context, token *APIToken) (can bool) {
 			// Two list endpoints share tasks.read_all but only one
 			// survives collection, so allow either explicitly.
 			if group == "tasks" && p == "read_all" && method == http.MethodGet &&
-				(path == "/api/v1/tasks" || path == "/api/v1/projects/:project/tasks") {
+				(path == apiRoutesPrefix+"/tasks" || path == apiRoutesPrefix+"/projects/:project/tasks") {
 				return true
 			}
 		}

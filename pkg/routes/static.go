@@ -113,12 +113,13 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 
 		scriptConfigString = strings.ReplaceAll(buf.String(), `<div id="app"></div>`, `<div id="app"></div>`+scriptConfig)
 
-		publicURL := config.ServicePublicURL.GetString()
-		if publicURL == "" {
-			publicURL = "/"
+		apiURL := config.ServicePublicURL.GetString()
+		if apiURL == "" {
+			basePath := strings.TrimSuffix(config.ServiceBasePath.GetString(), "/")
+			apiURL = basePath + "/"
 		}
 
-		scriptConfigString = strings.ReplaceAll(scriptConfigString, "'/api/v1'", "'"+publicURL+"api/v1'")
+		scriptConfigString = strings.ReplaceAll(scriptConfigString, "'/api/v1'", "'"+apiURL+"api/v1'")
 	}
 
 	reader := strings.NewReader(scriptConfigString)
@@ -136,13 +137,14 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 }
 
 // Copied from echo's middleware.StaticWithConfig simplified and adjusted for caching
-func static() echo.MiddlewareFunc {
+func static(basePath string) echo.MiddlewareFunc {
 	assetFs := http.FS(frontend.Files)
+	apiPrefix := basePath + "/api/"
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) (err error) {
 			p := c.Request().URL.Path
-			if strings.HasPrefix(p, "/api/") {
+			if strings.HasPrefix(p, apiPrefix) {
 				return next(c)
 			}
 			if strings.HasSuffix(c.Path(), "*") { // When serving from a group, e.g. `/static*`.
@@ -152,7 +154,20 @@ func static() echo.MiddlewareFunc {
 			if err != nil {
 				return
 			}
-			name := path.Join(rootPath, path.Clean("/"+p)) // "/"+ for security
+
+			// Strip the base path prefix to get the relative path for file lookup.
+			relativePath := p
+			if basePath != "" {
+				if !strings.HasPrefix(p, basePath) {
+					return next(c)
+				}
+				relativePath = strings.TrimPrefix(p, basePath)
+				if relativePath == "" {
+					relativePath = "/"
+				}
+			}
+
+			name := path.Join(rootPath, path.Clean("/"+relativePath)) // "/"+ for security
 
 			file, err := assetFs.Open(name)
 			if err != nil {
@@ -286,14 +301,15 @@ func serveFile(c *echo.Context, file io.ReadSeeker, info os.FileInfo, etag strin
 	return nil
 }
 
-func setupStaticFrontendFilesHandler(e *echo.Echo) {
+func setupStaticFrontendFilesHandler(e *echo.Echo, basePath string) {
+	apiPrefix := basePath + "/api/"
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level:     6,
 		MinLength: 256,
 		Skipper: func(c *echo.Context) bool {
-			return strings.HasPrefix(c.Path(), "/api/")
+			return strings.HasPrefix(c.Request().URL.Path, apiPrefix)
 		},
 	}))
 
-	e.Use(static())
+	e.Use(static(basePath))
 }

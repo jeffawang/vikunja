@@ -1,0 +1,27 @@
+# docker buildx build --platform linux/amd64 -f Dockerfile.tasks -t ghcr.io/jeffawang/vikunja-tasks-prefix:latest --push .
+FROM node:22-alpine AS frontend
+WORKDIR /src
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY frontend/ ./
+RUN VIKUNJA_FRONTEND_BASE=/_tasks/ pnpm run build
+
+FROM golang:1.25-alpine AS api
+RUN apk add --no-cache git gcc musl-dev
+WORKDIR /go/src/code.vikunja.io/api
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . ./
+COPY --from=frontend /src/dist ./frontend/dist
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /build/vikunja ./
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
+RUN mkdir -p /app/vikunja /db /tmp && chmod 1777 /tmp
+WORKDIR /app/vikunja
+COPY --from=api /build/vikunja .
+EXPOSE 3456
+ENV VIKUNJA_SERVICE_ROOTPATH=/app/vikunja/
+ENV VIKUNJA_DATABASE_PATH=/db/vikunja.db
+ENV VIKUNJA_SERVICE_BASEPATH=/_tasks/
+ENTRYPOINT ["/app/vikunja/vikunja"]
