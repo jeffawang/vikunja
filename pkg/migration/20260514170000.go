@@ -17,6 +17,9 @@
 package migration
 
 import (
+	"code.vikunja.io/api/pkg/models"
+	"code.vikunja.io/api/pkg/user"
+
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"
 )
@@ -29,23 +32,32 @@ func init() {
 			return seedSystemData(tx)
 		},
 		Rollback: func(tx *xorm.Engine) error {
-			project := &seedProject{}
+			project := &models.Project{}
 			has, err := tx.Where("title = ?", "egg").Get(project)
 			if err != nil {
 				return err
 			}
 			if has {
-				if _, err := tx.Where("project_id = ?", project.ID).Delete(&seedTeamProject{}); err != nil {
+				if _, err := tx.Where("project_id = ?", project.ID).Delete(&models.TeamProject{}); err != nil {
 					return err
 				}
-				if _, err := tx.Where("project_id = ?", project.ID).Delete(&seedProjectView{}); err != nil {
+				viewIDs := []int64{}
+				if err := tx.Table("project_views").Where("project_id = ?", project.ID).Cols("id").Find(&viewIDs); err != nil {
 					return err
 				}
-				if _, err := tx.Where("title = ?", "egg").Delete(&seedProject{}); err != nil {
+				if len(viewIDs) > 0 {
+					if _, err := tx.In("project_view_id", viewIDs).Delete(&models.Bucket{}); err != nil {
+						return err
+					}
+					if _, err := tx.In("id", viewIDs).Delete(&models.ProjectView{}); err != nil {
+						return err
+					}
+				}
+				if _, err := tx.Where("title = ?", "egg").Delete(&models.Project{}); err != nil {
 					return err
 				}
 			}
-			_, err = tx.Where("username = ?", "chicken").Delete(&seedUser{})
+			_, err = tx.Where("username = ?", "chicken").Delete(&user.User{})
 			return err
 		},
 	})

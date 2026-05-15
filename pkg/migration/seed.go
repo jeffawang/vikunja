@@ -17,101 +17,43 @@
 package migration
 
 import (
-	"time"
+	"code.vikunja.io/api/pkg/models"
+	"code.vikunja.io/api/pkg/user"
 
 	"xorm.io/xorm"
 )
 
 // seedSystemData ensures the canonical system records (Everyone team, chicken
-// bot user, egg project) exist. It is called both from initSchema (fresh DB)
-// and from the individual migration Migrate funcs (upgraded DB) so the data
-// always ends up in the database regardless of which code path runs first.
-// Every operation is idempotent — safe to call more than once.
+// bot user, egg project + default views + buckets, team_projects share) exist.
+// Called from initSchema (fresh DB) and from individual migration Migrate funcs
+// (upgraded DB). Each step is idempotent.
 func seedSystemData(x *xorm.Engine) error {
-	everyoneTeam, err := ensureEveryoneTeam(x)
+	s := x.NewSession()
+	defer s.Close()
+
+	everyone, err := ensureEveryoneTeam(s)
 	if err != nil {
+		_ = s.Rollback()
 		return err
 	}
 
-	chicken, err := ensureChickenUser(x)
+	chicken, err := ensureChickenUser(s)
 	if err != nil {
+		_ = s.Rollback()
 		return err
 	}
 
-	return ensureEggProject(x, chicken.ID, everyoneTeam.ID)
+	if err := ensureEggProject(s, chicken, everyone.ID); err != nil {
+		_ = s.Rollback()
+		return err
+	}
+
+	return s.Commit()
 }
 
-// --- local structs (independent of model changes) ---
-
-type seedTeam struct {
-	ID          int64     `xorm:"bigint autoincr not null unique pk"`
-	Name        string    `xorm:"varchar(250) not null"`
-	Description string    `xorm:"longtext null"`
-	CreatedByID int64     `xorm:"bigint not null INDEX"`
-	IsPublic    bool      `xorm:"not null default false"`
-	Created     time.Time `xorm:"created"`
-	Updated     time.Time `xorm:"updated"`
-}
-
-func (seedTeam) TableName() string { return "teams" }
-
-type seedUser struct {
-	ID         int64     `xorm:"bigint autoincr not null unique pk"`
-	Username   string    `xorm:"varchar(250) not null unique"`
-	Email      string    `xorm:"varchar(250) null"`
-	Password   string    `xorm:"varchar(250) null"`
-	BotOwnerID int64     `xorm:"bigint null index"`
-	Created    time.Time `xorm:"created"`
-	Updated    time.Time `xorm:"updated"`
-}
-
-func (seedUser) TableName() string { return "users" }
-
-type seedProject struct {
-	ID         int64     `xorm:"bigint autoincr not null unique pk"`
-	Title      string    `xorm:"varchar(250) not null"`
-	OwnerID    int64     `xorm:"bigint INDEX not null"`
-	IsArchived bool      `xorm:"not null default false"`
-	Created    time.Time `xorm:"created not null"`
-	Updated    time.Time `xorm:"updated not null"`
-}
-
-func (seedProject) TableName() string { return "projects" }
-
-type seedViewFilter struct {
-	Filter string `json:"filter"`
-}
-
-type seedProjectView struct {
-	ID                      int64           `xorm:"autoincr not null unique pk"`
-	Title                   string          `xorm:"varchar(255) not null"`
-	ProjectID               int64           `xorm:"not null index"`
-	ViewKind                int             `xorm:"not null"`
-	Filter                  *seedViewFilter `xorm:"json null default null"`
-	Position                float64         `xorm:"double null"`
-	BucketConfigurationMode int             `xorm:"default 0"`
-	Created                 time.Time       `xorm:"created not null"`
-	Updated                 time.Time       `xorm:"updated not null"`
-}
-
-func (seedProjectView) TableName() string { return "project_views" }
-
-type seedTeamProject struct {
-	ID         int64     `xorm:"bigint autoincr not null unique pk"`
-	TeamID     int64     `xorm:"bigint not null INDEX"`
-	ProjectID  int64     `xorm:"bigint not null INDEX"`
-	Permission int       `xorm:"bigint INDEX not null default 0"`
-	Created    time.Time `xorm:"created not null"`
-	Updated    time.Time `xorm:"updated not null"`
-}
-
-func (seedTeamProject) TableName() string { return "team_projects" }
-
-// --- idempotent helpers ---
-
-func ensureEveryoneTeam(x *xorm.Engine) (*seedTeam, error) {
-	team := &seedTeam{}
-	has, err := x.Where("name = ?", "Everyone").Get(team)
+func ensureEveryoneTeam(s *xorm.Session) (*models.Team, error) {
+	team := &models.Team{}
+	has, err := s.Where("name = ?", "Everyone").Get(team)
 	if err != nil {
 		return nil, err
 	}
@@ -119,22 +61,22 @@ func ensureEveryoneTeam(x *xorm.Engine) (*seedTeam, error) {
 		return team, nil
 	}
 
-	team = &seedTeam{
+	team = &models.Team{
 		Name:        "Everyone",
 		Description: "A team that represents all users.",
 		IsPublic:    true,
-		CreatedByID: 0,
 	}
-	// MustCols forces created_by_id=0 into the INSERT despite xorm's zero-value omission.
-	if _, err := x.NewSession().MustCols("created_by_id").Insert(team); err != nil {
+	// Bypass Team.CreateNewTeam (would try to add user 0 as a member).
+	// MustCols forces created_by_id=0 into the INSERT despite zero-value omission.
+	if _, err := s.MustCols("created_by_id").Insert(team); err != nil {
 		return nil, err
 	}
 	return team, nil
 }
 
-func ensureChickenUser(x *xorm.Engine) (*seedUser, error) {
-	chicken := &seedUser{}
-	has, err := x.Where("username = ?", "chicken").Get(chicken)
+func ensureChickenUser(s *xorm.Session) (*user.User, error) {
+	chicken := &user.User{}
+	has, err := s.Where("username = ?", "chicken").Get(chicken)
 	if err != nil {
 		return nil, err
 	}
@@ -142,52 +84,47 @@ func ensureChickenUser(x *xorm.Engine) (*seedUser, error) {
 		return chicken, nil
 	}
 
-	chicken = &seedUser{Username: "chicken"}
-	if _, err := x.Insert(chicken); err != nil {
+	chicken = &user.User{Username: "chicken"}
+	// Bypass user.CreateUser to skip password/email validation for this bot.
+	if _, err := s.Insert(chicken); err != nil {
 		return nil, err
 	}
-	// Self-referential BotOwnerID makes IsBot() return true, blocking interactive login.
-	if _, err := x.ID(chicken.ID).Cols("bot_owner_id").Update(&seedUser{BotOwnerID: chicken.ID}); err != nil {
+	// Self-referential BotOwnerID makes IsBot() true → blocks login.
+	chicken.BotOwnerID = chicken.ID
+	if _, err := s.ID(chicken.ID).Cols("bot_owner_id").Update(chicken); err != nil {
 		return nil, err
 	}
 	return chicken, nil
 }
 
-func ensureEggProject(x *xorm.Engine, ownerID, everyoneTeamID int64) error {
-	project := &seedProject{}
-	has, err := x.Where("title = ?", "egg").Get(project)
+func ensureEggProject(s *xorm.Session, chicken *user.User, everyoneTeamID int64) error {
+	project := &models.Project{}
+	has, err := s.Where("title = ?", "egg").Get(project)
 	if err != nil {
 		return err
 	}
 	if !has {
-		project = &seedProject{Title: "egg", OwnerID: ownerID}
-		if _, err := x.Insert(project); err != nil {
+		project = &models.Project{Title: "egg", OwnerID: chicken.ID}
+		if _, err := s.Insert(project); err != nil {
 			return err
 		}
-
-		views := []*seedProjectView{
-			{Title: "List", ProjectID: project.ID, ViewKind: 0, Filter: &seedViewFilter{Filter: "done = false"}, Position: 100},
-			{Title: "Gantt", ProjectID: project.ID, ViewKind: 1, Position: 200},
-			{Title: "Table", ProjectID: project.ID, ViewKind: 2, Position: 300},
-			{Title: "Kanban", ProjectID: project.ID, ViewKind: 3, Position: 400, BucketConfigurationMode: 1},
-		}
-		if _, err := x.Insert(&views); err != nil {
+		// Canonical view+bucket creation — same path the UI uses for new projects.
+		if err := models.CreateDefaultViewsForProject(s, project, chicken, true, true); err != nil {
 			return err
 		}
 	}
 
-	// Ensure the Everyone team has access.
-	count, err := x.Where("team_id = ? AND project_id = ?", everyoneTeamID, project.ID).Count(&seedTeamProject{})
+	count, err := s.Where("team_id = ? AND project_id = ?", everyoneTeamID, project.ID).Count(&models.TeamProject{})
 	if err != nil {
 		return err
 	}
-	if count == 0 {
-		_, err = x.Insert(&seedTeamProject{
-			TeamID:     everyoneTeamID,
-			ProjectID:  project.ID,
-			Permission: 2, // Admin
-		})
-		return err
+	if count > 0 {
+		return nil
 	}
-	return nil
+	_, err = s.Insert(&models.TeamProject{
+		TeamID:     everyoneTeamID,
+		ProjectID:  project.ID,
+		Permission: models.PermissionAdmin,
+	})
+	return err
 }

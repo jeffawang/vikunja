@@ -17,6 +17,8 @@
 package migration
 
 import (
+	"code.vikunja.io/api/pkg/models"
+
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"
 )
@@ -26,11 +28,16 @@ func init() {
 		ID:          "20260514140000",
 		Description: "create everyone team",
 		Migrate: func(tx *xorm.Engine) error {
-			_, err := ensureEveryoneTeam(tx)
-			return err
+			s := tx.NewSession()
+			defer s.Close()
+			if _, err := ensureEveryoneTeam(s); err != nil {
+				_ = s.Rollback()
+				return err
+			}
+			return s.Commit()
 		},
 		Rollback: func(tx *xorm.Engine) error {
-			_, err := tx.Where("name = ?", "Everyone").Delete(&seedTeam{})
+			_, err := tx.Where("name = ?", "Everyone").Delete(&models.Team{})
 			return err
 		},
 	})
