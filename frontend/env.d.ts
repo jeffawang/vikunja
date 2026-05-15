@@ -2,6 +2,8 @@
 /// <reference types="vite-svg-loader" />
 /// <reference types="@histoire/plugin-vue/components" />
 
+declare const __VIKUNJA_BASE_PATH__: string
+
 interface ImportMetaEnv {
 	readonly VIKUNJA_API_URL?: string
 	readonly VIKUNJA_HTTP_PORT?: number

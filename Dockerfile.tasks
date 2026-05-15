@@ -4,7 +4,7 @@ WORKDIR /src
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ ./
-RUN VIKUNJA_FRONTEND_BASE=/_tasks/ pnpm run build
+RUN pnpm run build
 
 FROM golang:1.25-alpine AS api
 RUN apk add --no-cache git gcc musl-dev
@@ -26,5 +26,4 @@ COPY --from=api /build/vikunja .
 EXPOSE 3456
 ENV VIKUNJA_SERVICE_ROOTPATH=/app/vikunja/
 ENV VIKUNJA_DATABASE_PATH=/db/vikunja.db
-ENV VIKUNJA_SERVICE_BASEPATH=/_tasks/
 ENTRYPOINT ["/app/vikunja/vikunja"]

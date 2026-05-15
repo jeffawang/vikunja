@@ -108,9 +108,10 @@ function getBuildConfig(env: Record<string, string>) {
 	const workboxVersion = JSON.parse(readFileSync(workboxPkgPath, 'utf-8')).version
 
 	return {
-		base: env.VIKUNJA_FRONTEND_BASE,
+		base: env.VIKUNJA_SERVICE_BASEPATH || './',
 		define: {
 			__WORKBOX_VERSION__: JSON.stringify(`v${workboxVersion}`),
+			__VIKUNJA_BASE_PATH__: JSON.stringify(env.VIKUNJA_SERVICE_BASEPATH || '/'),
 		},
 		// https://vitest.dev/config/
 		test: {
@@ -270,10 +271,10 @@ function getServeConfig(env: Record<string, string>) {
 	// get some default settings from prod mod
 	const buildConfig = getBuildConfig(env)
 
-	// Build the proxy pattern from VIKUNJA_FRONTEND_BASE so that custom base
+	// Build the proxy pattern from VIKUNJA_SERVICE_BASEPATH so that custom base
 	// paths like /vikunja proxy /vikunja/api/* correctly.
 	// Falls back to /api.
-	const base = (env.VIKUNJA_FRONTEND_BASE || '/').replace(/\/+$/, '')
+	const base = (env.VIKUNJA_SERVICE_BASEPATH || '/').replace(/\/+$/, '')
 	const proxyPath = `${base}/api`
 
 	// override prod settings with dev settings

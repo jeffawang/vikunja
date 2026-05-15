@@ -21,7 +21,7 @@ import UpcomingTasks from '@/views/tasks/ShowTasks.vue'
 import NotFoundComponent from '@/views/404.vue'
 
 const router = createRouter({
-	history: createWebHistory(import.meta.env.BASE_URL),
+	history: createWebHistory((globalThis as { VIKUNJA_BASE_PATH?: string }).VIKUNJA_BASE_PATH || __VIKUNJA_BASE_PATH__),
 	scrollBehavior(to, from, savedPosition) {
 		// If the user is using their forward/backward keys to navigate, we want to restore the scroll view
 		if (savedPosition) {

@@ -51,6 +51,7 @@ const (
 	window.ALLOW_ICON_CHANGES = {{ .ALLOW_ICON_CHANGES }}
 	window.CUSTOM_LOGO_URL = '{{ .CUSTOM_LOGO_URL }}'
 	window.CUSTOM_LOGO_URL_DARK = '{{ .CUSTOM_LOGO_URL_DARK }}'
+	window.VIKUNJA_BASE_PATH = '{{ .VIKUNJA_BASE_PATH }}'
 </script>`
 )
 
@@ -98,6 +99,8 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 		}
 		data["CUSTOM_LOGO_URL"] = config.ServiceCustomLogoURL.GetString()
 		data["CUSTOM_LOGO_URL_DARK"] = config.ServiceCustomLogoURLDark.GetString()
+		frontendBasePath := strings.TrimSuffix(config.ServiceBasePath.GetString(), "/") + "/"
+		data["VIKUNJA_BASE_PATH"] = frontendBasePath
 
 		err = tmpl.Execute(&tplOutput, data)
 		if err != nil {
@@ -120,6 +123,8 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 		}
 
 		scriptConfigString = strings.ReplaceAll(scriptConfigString, "'/api/v1'", "'"+apiURL+"api/v1'")
+
+		scriptConfigString = strings.ReplaceAll(scriptConfigString, `<head>`, `<head><base href="`+frontendBasePath+`">`)
 	}
 
 	reader := strings.NewReader(scriptConfigString)
