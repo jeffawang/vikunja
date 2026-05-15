@@ -11,7 +11,11 @@ export function getRedirectUrlFromCurrentFrontendPath(provider: IProvider): stri
 	return `${url.protocol}//${url.host}${base}auth/openid/${provider.key}`
 }
 
-export const redirectToProvider = (provider: IProvider) => {
+export const OIDC_AUTH_SUCCESS_MESSAGE = 'vikunja-oidc-auth-success'
+
+// Returns a popup window when the auth was opened in a popup (i.e. we're running in an iframe),
+// or null when we navigated directly (normal top-level flow).
+export const redirectToProvider = (provider: IProvider): Window | null => {
 
 	const redirectUrl = getRedirectUrlFromCurrentFrontendPath(provider)
 	const state = createRandomID(24)
@@ -21,7 +25,16 @@ export const redirectToProvider = (provider: IProvider) => {
 	if (provider.scope !== null){
 		scope = provider.scope
 	}
-	window.location.href = `${provider.authUrl}?client_id=${provider.clientId}&redirect_uri=${redirectUrl}&response_type=code&scope=${scope}&state=${state}`
+	const authUrl = `${provider.authUrl}?client_id=${provider.clientId}&redirect_uri=${redirectUrl}&response_type=code&scope=${scope}&state=${state}`
+
+	// When embedded in an iframe, providers like GitHub set X-Frame-Options / CSP that block
+	// the redirect inside the frame. Open a popup instead so the OAuth flow runs top-level.
+	if (window.self !== window.top) {
+		return window.open(authUrl, 'vikunja-oauth', 'width=600,height=700')
+	}
+
+	window.location.href = authUrl
+	return null
 }
 
 export const redirectToProviderOnLogout = (provider: IProvider) => {

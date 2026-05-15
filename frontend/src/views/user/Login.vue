@@ -111,7 +111,7 @@
 				:key="k"
 				variant="secondary"
 				class="is-fullwidth mbs-2"
-				@click="redirectToProvider(p)"
+				@click="loginWithProvider(p)"
 			>
 				{{ $t('user.auth.loginWith', {provider: p.name}) }}
 			</XButton>
@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeMount, ref} from 'vue'
+import {computed, onBeforeMount, onUnmounted, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
 import {useDebounceFn} from '@vueuse/core'
@@ -132,7 +132,8 @@ import FormCheckbox from '@/components/input/FormCheckbox.vue'
 import DesktopLogin from '@/views/user/DesktopLogin.vue'
 
 import {getErrorText} from '@/message'
-import {redirectToProvider} from '@/helpers/redirectToProvider'
+import {redirectToProvider, OIDC_AUTH_SUCCESS_MESSAGE} from '@/helpers/redirectToProvider'
+import type {IProvider} from '@/types/IProvider'
 import {useRedirectToLastVisited} from '@/composables/useRedirectToLastVisited'
 import {isDesktopApp} from '@/helpers/desktopAuth'
 
@@ -193,6 +194,41 @@ const validateUsernameField = useDebounceFn(() => {
 
 const needsTotpPasscode = computed(() => authStore.needsTotpPasscode)
 const totpPasscode = ref<HTMLInputElement | null>(null)
+
+let oidcMessageListener: ((event: MessageEvent) => void) | null = null
+
+function loginWithProvider(provider: IProvider) {
+	const popup = redirectToProvider(provider)
+	if (!popup) {
+		return
+	}
+
+	// A popup was opened (we're in an iframe). Listen for the auth success message and
+	// reload auth state once the popup completes the OAuth flow.
+	oidcMessageListener = (event: MessageEvent) => {
+		if (event.origin !== window.location.origin) return
+		if (event.data?.type !== OIDC_AUTH_SUCCESS_MESSAGE) return
+
+		if (oidcMessageListener) {
+			window.removeEventListener('message', oidcMessageListener)
+			oidcMessageListener = null
+		}
+
+		authStore.checkAuth().then(() => {
+			if (authStore.authenticated) {
+				redirectIfSaved()
+			}
+		})
+	}
+	window.addEventListener('message', oidcMessageListener)
+}
+
+onUnmounted(() => {
+	if (oidcMessageListener) {
+		window.removeEventListener('message', oidcMessageListener)
+		oidcMessageListener = null
+	}
+})
 
 async function submit() {
 	errorMessage.value = ''

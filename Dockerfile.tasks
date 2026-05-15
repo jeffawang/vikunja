@@ -10,10 +10,13 @@ FROM golang:1.25-alpine AS api
 RUN apk add --no-cache git gcc musl-dev
 WORKDIR /go/src/code.vikunja.io/api
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
 COPY . ./
 COPY --from=frontend /src/dist ./frontend/dist
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /build/vikunja ./
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 go build -ldflags="-s -w" -o /build/vikunja ./
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata

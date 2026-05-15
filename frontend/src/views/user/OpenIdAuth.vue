@@ -58,7 +58,7 @@ import {getErrorText} from '@/message'
 import Message from '@/components/misc/Message.vue'
 import FormField from '@/components/input/FormField.vue'
 import {useRedirectToLastVisited} from '@/composables/useRedirectToLastVisited'
-import {redirectToProvider} from '@/helpers/redirectToProvider'
+import {redirectToProvider, OIDC_AUTH_SUCCESS_MESSAGE} from '@/helpers/redirectToProvider'
 
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'
@@ -136,6 +136,14 @@ async function authenticateWithCode() {
 			code: route.query.code as string,
 			totpPasscode: pendingPasscode,
 		})
+
+		// When the OAuth flow was opened in a popup (because we're embedded in an iframe),
+		// notify the opener and close instead of navigating within the popup.
+		if (window.opener) {
+			window.opener.postMessage({ type: OIDC_AUTH_SUCCESS_MESSAGE }, window.location.origin)
+			window.close()
+			return
+		}
 
 		redirectIfSaved()
 	} catch (e) {
