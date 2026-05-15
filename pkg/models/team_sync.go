@@ -25,8 +25,12 @@ import (
 )
 
 // EnsureEveryoneTeamMembership adds the user to the "Everyone" team if they are
-// not already a member. Silently succeeds if the team does not exist.
+// not already a member. Silently succeeds if the team does not exist. Bot users
+// are skipped because they cannot log in and should not be team members.
 func EnsureEveryoneTeamMembership(s *xorm.Session, u *user.User) error {
+	if u.IsBot() {
+		return nil
+	}
 	team := &Team{}
 	has, err := s.Where("name = ?", "Everyone").Get(team)
 	if err != nil {
