@@ -17,42 +17,20 @@
 package migration
 
 import (
-	"time"
-
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"
 )
-
-type teams20260514140000 struct {
-	ID          int64     `xorm:"bigint autoincr not null unique pk"`
-	Name        string    `xorm:"varchar(250) not null"`
-	Description string    `xorm:"longtext null"`
-	CreatedByID int64     `xorm:"bigint not null INDEX"`
-	ExternalID  string    `xorm:"varchar(250) null"`
-	Issuer      string    `xorm:"text null"`
-	IsPublic    bool      `xorm:"not null default false"`
-	Created     time.Time `xorm:"created"`
-	Updated     time.Time `xorm:"updated"`
-}
-
-func (teams20260514140000) TableName() string {
-	return "teams"
-}
 
 func init() {
 	migrations = append(migrations, &xormigrate.Migration{
 		ID:          "20260514140000",
 		Description: "create everyone team",
 		Migrate: func(tx *xorm.Engine) error {
-			_, err := tx.Insert(&teams20260514140000{
-				Name:        "Everyone",
-				Description: "A team that represents all users.",
-				IsPublic:    true,
-			})
+			_, err := ensureEveryoneTeam(tx)
 			return err
 		},
 		Rollback: func(tx *xorm.Engine) error {
-			_, err := tx.Where("name = ?", "Everyone").Delete(&teams20260514140000{})
+			_, err := tx.Where("name = ?", "Everyone").Delete(&seedTeam{})
 			return err
 		},
 	})

@@ -271,5 +271,8 @@ func initSchema(tx *xorm.Engine) error {
 	schemeBeans = append(schemeBeans, migration.GetTables()...)
 	schemeBeans = append(schemeBeans, user.GetTables()...)
 	schemeBeans = append(schemeBeans, notifications.GetTables()...)
-	return tx.Sync2(schemeBeans...)
+	if err := tx.Sync2(schemeBeans...); err != nil {
+		return err
+	}
+	return seedSystemData(tx)
 }
