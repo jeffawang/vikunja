@@ -278,10 +278,10 @@ var userCreateCmd = &cobra.Command{
 			log.Fatalf("Error creating new user: %s", err)
 		}
 
-		err = models.CreateNewProjectForUser(s, newUser)
+		err = models.SetEggAsDefaultProject(s, newUser)
 		if err != nil {
 			_ = s.Rollback()
-			log.Fatalf("Error creating new project for user: %s", err)
+			log.Fatalf("Error setting default project for user: %s", err)
 		}
 
 		if err := s.Commit(); err != nil {

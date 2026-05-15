@@ -1078,14 +1078,37 @@ func CreateNewProjectForUser(s *xorm.Session, u *user.User) (err error) {
 	return err
 }
 
-// RegisterUser creates a user plus their default inbox project; shared by /register and the admin create-user route.
+// SetEggAsDefaultProject sets the shared "egg" project as the new user's
+// default project. No per-user Inbox is created — all users share egg via the
+// Everyone team. If egg does not exist (e.g. test environments without seed
+// data), the user's default project is left unchanged.
+func SetEggAsDefaultProject(s *xorm.Session, u *user.User) error {
+	if u.DefaultProjectID != 0 {
+		return nil
+	}
+
+	egg := &Project{}
+	has, err := s.Where("title = ?", "egg").Get(egg)
+	if err != nil {
+		return err
+	}
+	if !has {
+		return nil
+	}
+
+	u.DefaultProjectID = egg.ID
+	_, err = user.UpdateUser(s, u, false)
+	return err
+}
+
+// RegisterUser creates a user and sets their default project; shared by /register and the admin create-user route.
 func RegisterUser(s *xorm.Session, u *user.User) (*user.User, error) {
 	newUser, err := user.CreateUser(s, u)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := CreateNewProjectForUser(s, newUser); err != nil {
+	if err := SetEggAsDefaultProject(s, newUser); err != nil {
 		return nil, err
 	}
 

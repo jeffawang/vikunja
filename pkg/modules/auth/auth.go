@@ -287,8 +287,8 @@ func CreateUserWithRandomUsername(s *xorm.Session, uu *user.User) (u *user.User,
 		uu.Username = petname.Generate(3, "-")
 	}
 
-	// And create their project
-	err = models.CreateNewProjectForUser(s, u)
+	// Set the shared egg project as their default project
+	err = models.SetEggAsDefaultProject(s, u)
 	return
 }
 
