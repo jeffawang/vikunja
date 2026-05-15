@@ -120,6 +120,11 @@ func Login(c *echo.Context) (err error) {
 		return err
 	}
 
+	if err := models.EnsureEveryoneTeamMembership(s, user); err != nil {
+		_ = s.Rollback()
+		return err
+	}
+
 	if err := s.Commit(); err != nil {
 		_ = s.Rollback()
 		return err

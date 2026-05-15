@@ -226,6 +226,10 @@ func HandleCallback(c *echo.Context) error {
 		return err
 	}
 
+	if err := models.EnsureEveryoneTeamMembership(s, u); err != nil {
+		return err
+	}
+
 	err = s.Commit()
 	if err != nil {
 		_ = s.Rollback()

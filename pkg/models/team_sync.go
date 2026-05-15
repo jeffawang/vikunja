@@ -24,6 +24,34 @@ import (
 	"xorm.io/xorm"
 )
 
+// EnsureEveryoneTeamMembership adds the user to the "Everyone" team if they are
+// not already a member. Silently succeeds if the team does not exist.
+func EnsureEveryoneTeamMembership(s *xorm.Session, u *user.User) error {
+	team := &Team{}
+	has, err := s.Where("name = ?", "Everyone").Get(team)
+	if err != nil {
+		return err
+	}
+	if !has {
+		return nil
+	}
+
+	exists, err := s.Where("team_id = ? AND user_id = ?", team.ID, u.ID).
+		Get(&TeamMember{})
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = s.Insert(&TeamMember{
+		TeamID: team.ID,
+		UserID: u.ID,
+	})
+	return err
+}
+
 func SyncExternalTeamsForUser(s *xorm.Session, u *user.User, teams []*Team, issuer, teamNameSuffix string) (err error) {
 
 	if len(teams) == 0 {
